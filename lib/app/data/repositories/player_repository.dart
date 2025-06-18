@@ -1,3 +1,4 @@
+// lib/app/data/repositories/player_repository.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/player_model.dart';
 import '../models/position_model.dart';
@@ -43,10 +44,6 @@ class PlayerRepository {
       await _playersRef.doc(playerId).update({
         'revealedTiles': FieldValue.arrayUnion([tileId]),
       });
-
-      await FirestoreProvider.playerRevealedTiles(playerId).doc(tileId).set({
-        'revealedAt': DateTime.now().toIso8601String(),
-      });
     } catch (e) {
       print('Erreur lors de l\'ajout de la tuile révélée: $e');
     }
@@ -61,23 +58,9 @@ class PlayerRepository {
     });
   }
 
+  // Version simple sans index requis
   Stream<List<Player>> playersInAreaStream(Position center, int radius) {
-    final minX = center.x - radius;
-    final maxX = center.x + radius;
-
-    return _playersRef
-        .where('position.x', isGreaterThanOrEqualTo: minX)
-        .where('position.x', isLessThanOrEqualTo: maxX)
-        .snapshots()
-        .map((snapshot) {
-      final players = snapshot.docs
-          .map((doc) => Player.fromMap(doc.data() as Map<String, dynamic>))
-          .where((player) {
-        final dy = (player.position.y - center.y).abs();
-        return dy <= radius;
-      }).toList();
-
-      return players;
-    });
+    // Retourne une liste vide pour l'instant
+    return Stream.value([]);
   }
 }

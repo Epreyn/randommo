@@ -44,7 +44,7 @@ class _SplashViewState extends State<SplashView> {
             ),
             const SizedBox(height: 24),
             const Text(
-              'Flutter MMO',
+              'RandoMmo',
               style: TextStyle(
                 fontSize: 32,
                 fontWeight: FontWeight.bold,

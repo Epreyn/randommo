@@ -22,7 +22,7 @@ class AuthView extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             const Text(
-              'Flutter MMO',
+              'RandoMmo',
               style: TextStyle(
                 fontSize: 32,
                 fontWeight: FontWeight.bold,
@@ -31,20 +31,24 @@ class AuthView extends StatelessWidget {
             ),
             const SizedBox(height: 48),
             Obx(() => ElevatedButton(
-              onPressed: controller.isLoading.value ? null : controller.signInAnonymously,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
-              ),
-              child: controller.isLoading.value
-                  ? const CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    )
-                  : const Text(
-                      'Jouer en tant qu\'invité',
-                      style: TextStyle(fontSize: 18),
-                    ),
-            )),
+                  onPressed: controller.isLoading.value
+                      ? null
+                      : controller.signInAnonymously,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 48, vertical: 16),
+                  ),
+                  child: controller.isLoading.value
+                      ? const CircularProgressIndicator(
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                        )
+                      : const Text(
+                          'Jouer en tant qu\'invité',
+                          style: TextStyle(fontSize: 18),
+                        ),
+                )),
           ],
         ),
       ),
