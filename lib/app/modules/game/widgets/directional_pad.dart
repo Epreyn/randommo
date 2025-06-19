@@ -1,3 +1,4 @@
+// lib/app/modules/game/widgets/directional_pad.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../controllers/game_controller.dart';
@@ -7,13 +8,14 @@ class DirectionalPad extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final GameController controller = Get.find();
+    final controller = Get.find<GameController>();
 
-    return Container(
+    return SizedBox(
       width: 200,
       height: 200,
       child: Stack(
         children: [
+          // Bouton Haut
           Positioned(
             top: 0,
             left: 60,
@@ -22,6 +24,7 @@ class DirectionalPad extends StatelessWidget {
               icon: Icons.arrow_upward,
             ),
           ),
+          // Bouton Gauche
           Positioned(
             top: 60,
             left: 0,
@@ -30,6 +33,7 @@ class DirectionalPad extends StatelessWidget {
               icon: Icons.arrow_back,
             ),
           ),
+          // Centre avec indicateur de mouvement
           Positioned(
             top: 60,
             left: 60,
@@ -37,22 +41,30 @@ class DirectionalPad extends StatelessWidget {
               width: 80,
               height: 80,
               child: Center(
-                child: Obx(
-                  () => controller.isMoving.value
-                      ? const SizedBox(
-                          width: 30,
-                          height: 30,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 3,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.green),
-                          ),
-                        )
-                      : SizedBox.shrink(),
-                ),
+                child: Obx(() => controller.isMoving.value
+                    ? const SizedBox(
+                        width: 30,
+                        height: 30,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 3,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.green),
+                        ),
+                      )
+                    : Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[800],
+                          shape: BoxShape.circle,
+                          border:
+                              Border.all(color: Colors.grey[600]!, width: 2),
+                        ),
+                      )),
               ),
             ),
           ),
+          // Bouton Droite
           Positioned(
             top: 60,
             right: 0,
@@ -61,6 +73,7 @@ class DirectionalPad extends StatelessWidget {
               icon: Icons.arrow_forward,
             ),
           ),
+          // Bouton Bas
           Positioned(
             bottom: 0,
             left: 60,
@@ -78,36 +91,32 @@ class DirectionalPad extends StatelessWidget {
 class _DirectionalButton extends StatelessWidget {
   final VoidCallback onPressed;
   final IconData icon;
-  final double size;
 
   const _DirectionalButton({
     required this.onPressed,
     required this.icon,
-    this.size = 80,
   });
 
   @override
   Widget build(BuildContext context) {
-    final GameController controller = Get.find();
+    final controller = Get.find<GameController>();
 
     return Obx(() => SizedBox(
-          width: size,
-          height: size,
+          width: 80,
+          height: 80,
           child: ElevatedButton(
             onPressed: controller.isMoving.value ? null : onPressed,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.grey[700],
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(size / 2),
+                borderRadius: BorderRadius.circular(40),
               ),
               padding: EdgeInsets.zero,
               elevation: 4,
+              disabledBackgroundColor: Colors.grey[800],
             ),
-            child: Icon(
-              icon,
-              size: size * 0.4,
-            ),
+            child: Icon(icon, size: 32),
           ),
         ));
   }

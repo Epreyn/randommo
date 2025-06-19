@@ -2,15 +2,16 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../controllers/game_controller.dart';
-import '../controllers/player_controller.dart';
-import '../widgets/animated_game_grid.dart';
+import '../widgets/game_grid.dart';
 import '../widgets/directional_pad.dart';
 
-class GameView extends GetView<GameController> {
+class GameView extends StatelessWidget {
   const GameView({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final controller = Get.put(GameController());
+
     return Scaffold(
       backgroundColor: Colors.grey[900],
       appBar: AppBar(
@@ -18,7 +19,7 @@ class GameView extends GetView<GameController> {
         backgroundColor: Colors.grey[850],
         actions: [
           Obx(() {
-            final player = Get.find<PlayerController>().currentPlayer.value;
+            final player = controller.currentPlayer.value;
             if (player != null) {
               return Padding(
                 padding: const EdgeInsets.all(8.0),
@@ -31,9 +32,11 @@ class GameView extends GetView<GameController> {
                         style: const TextStyle(fontSize: 12),
                       ),
                       Text(
-                        'Position: (${player.position.x}, ${player.position.y})',
+                        'Pos: (${player.position.x}, ${player.position.y})',
                         style: const TextStyle(
-                            fontSize: 14, fontWeight: FontWeight.bold),
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ],
                   ),
@@ -42,54 +45,33 @@ class GameView extends GetView<GameController> {
             }
             return const SizedBox.shrink();
           }),
-
-          // Bouton info sur mobile
-          if (MediaQuery.of(context).size.width < 600)
-            IconButton(
-              icon: const Icon(Icons.info_outline),
-              onPressed: () => _showLegendDialog(context),
-            ),
         ],
       ),
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            if (constraints.maxWidth < 600) {
+            final isMobile = constraints.maxWidth < 600;
+
+            if (isMobile) {
               return Column(
                 children: [
-                  Expanded(
+                  const Expanded(
                     flex: 3,
-                    child: Center(
-                      child: Obx(() {
-                        if (Get.find<PlayerController>().isLoading.value) {
-                          return const CircularProgressIndicator();
-                        }
-                        return const AnimatedGameGrid();
-                      }),
-                    ),
+                    child: Center(child: GameGrid()),
                   ),
                   Container(
                     padding: const EdgeInsets.all(20),
                     color: Colors.grey[850],
-                    child: const Center(
-                      child: DirectionalPad(),
-                    ),
+                    child: const Center(child: DirectionalPad()),
                   ),
                 ],
               );
             } else {
               return Row(
                 children: [
-                  Expanded(
+                  const Expanded(
                     flex: 3,
-                    child: Center(
-                      child: Obx(() {
-                        if (Get.find<PlayerController>().isLoading.value) {
-                          return const CircularProgressIndicator();
-                        }
-                        return const AnimatedGameGrid();
-                      }),
-                    ),
+                    child: Center(child: GameGrid()),
                   ),
                   Container(
                     width: 300,
@@ -142,13 +124,12 @@ class GameView extends GetView<GameController> {
           ),
           const SizedBox(height: 10),
           _legendItem(Colors.green[400]!, 'Herbe (praticable)'),
-          _legendItem(Colors.blue[400]!, 'Eau (impraticable)'),
-          _legendItem(Colors.brown[400]!, 'Montagne (impraticable)'),
+          _legendItem(Colors.blue[400]!, 'Eau (obstacle)'),
+          _legendItem(Colors.brown[400]!, 'Montagne (obstacle)'),
           const SizedBox(height: 5),
           const Divider(color: Colors.white24),
           const SizedBox(height: 5),
-          _legendItem(Colors.grey[700]!, 'Zone déjà explorée'),
-          _legendItem(Colors.grey[900]!, 'Terre inconnue'),
+          _legendItem(Colors.black87, 'Zone non découverte'),
         ],
       ),
     );
@@ -169,29 +150,11 @@ class GameView extends GetView<GameController> {
             ),
           ),
           const SizedBox(width: 10),
-          Text(
-            label,
-            style: const TextStyle(color: Colors.white70, fontSize: 14),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showLegendDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[850],
-        title: const Text(
-          'Légende',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: _buildLegend(),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
           ),
         ],
       ),

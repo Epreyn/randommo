@@ -3,9 +3,9 @@ import 'position_model.dart';
 class Player {
   final String id;
   final String name;
-  final Position position;
+  Position position;
   final List<String> revealedTiles;
-  final DateTime lastActive;
+  DateTime lastActive;
 
   Player({
     required this.id,

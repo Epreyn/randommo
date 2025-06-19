@@ -7,22 +7,16 @@ class TileWidget extends StatefulWidget {
   final Tile? tile;
   final Position position;
   final bool isRevealed;
+  final bool isBeingRevealed;
   final bool isPlayerPosition;
-  final bool hasOtherPlayer;
-  final bool existsInDatabase;
-  final bool shouldAnimate;
-  final int animationDelay;
 
   const TileWidget({
     super.key,
     this.tile,
     required this.position,
     required this.isRevealed,
+    required this.isBeingRevealed,
     required this.isPlayerPosition,
-    required this.hasOtherPlayer,
-    this.existsInDatabase = false,
-    this.shouldAnimate = false,
-    this.animationDelay = 0,
   });
 
   @override
@@ -34,7 +28,7 @@ class _TileWidgetState extends State<TileWidget>
   late AnimationController _controller;
   late Animation<double> _flipAnimation;
   late Animation<double> _scaleAnimation;
-  bool _hasAnimated = false;
+  bool _animationCompleted = false;
 
   @override
   void initState() {
@@ -44,6 +38,14 @@ class _TileWidgetState extends State<TileWidget>
       duration: const Duration(milliseconds: 600),
       vsync: this,
     );
+
+    _controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        setState(() {
+          _animationCompleted = true;
+        });
+      }
+    });
 
     _flipAnimation = Tween<double>(
       begin: 0.0,
@@ -55,27 +57,22 @@ class _TileWidgetState extends State<TileWidget>
 
     _scaleAnimation = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween<double>(begin: 1.0, end: 0.85),
-        weight: 25,
+        tween: Tween<double>(begin: 1.0, end: 0.9),
+        weight: 20,
       ),
       TweenSequenceItem(
-        tween: Tween<double>(begin: 0.85, end: 1.1),
-        weight: 50,
+        tween: Tween<double>(begin: 0.9, end: 1.1),
+        weight: 40,
       ),
       TweenSequenceItem(
         tween: Tween<double>(begin: 1.1, end: 1.0),
-        weight: 25,
+        weight: 40,
       ),
     ]).animate(_controller);
 
-    // Démarrer l'animation si nécessaire
-    if (widget.shouldAnimate && !_hasAnimated) {
-      Future.delayed(Duration(milliseconds: widget.animationDelay), () {
-        if (mounted) {
-          _controller.forward();
-          _hasAnimated = true;
-        }
-      });
+    // Démarrer l'animation si la tuile est en cours de révélation
+    if (widget.isBeingRevealed) {
+      _controller.forward();
     }
   }
 
@@ -83,14 +80,15 @@ class _TileWidgetState extends State<TileWidget>
   void didUpdateWidget(TileWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // Si on doit animer et qu'on ne l'a pas encore fait
-    if (widget.shouldAnimate && !_hasAnimated && !_controller.isAnimating) {
-      Future.delayed(Duration(milliseconds: widget.animationDelay), () {
-        if (mounted) {
-          _controller.forward();
-          _hasAnimated = true;
-        }
-      });
+    // Log pour debug
+    if (oldWidget.isBeingRevealed != widget.isBeingRevealed) {
+      print(
+          '🔄 TileWidget ${widget.position.id}: isBeingRevealed ${oldWidget.isBeingRevealed} → ${widget.isBeingRevealed}');
+    }
+
+    // Démarrer l'animation quand isBeingRevealed passe à true
+    if (!oldWidget.isBeingRevealed && widget.isBeingRevealed) {
+      _controller.forward(from: 0);
     }
   }
 
@@ -102,8 +100,14 @@ class _TileWidgetState extends State<TileWidget>
 
   @override
   Widget build(BuildContext context) {
-    // Si on doit animer ou si l'animation est en cours
-    if (widget.shouldAnimate || _controller.isAnimating || _hasAnimated) {
+    // Si l'animation est terminée, afficher directement la tuile révélée
+    if (_animationCompleted) {
+      return _buildRevealedTile();
+    }
+
+    // Si la tuile est en cours d'animation
+    if (widget.isBeingRevealed &&
+        (_controller.isAnimating || _controller.value > 0)) {
       return AnimatedBuilder(
         animation: _controller,
         builder: (context, child) {
@@ -112,12 +116,12 @@ class _TileWidgetState extends State<TileWidget>
 
           Widget content;
           if (isShowingBack) {
-            content = _buildHiddenCard();
+            content = _buildHiddenTile();
           } else {
             content = Transform(
               alignment: Alignment.center,
               transform: Matrix4.identity()..rotateY(3.14159),
-              child: _buildRevealedCard(),
+              child: _buildRevealedTile(),
             );
           }
 
@@ -133,84 +137,62 @@ class _TileWidgetState extends State<TileWidget>
       );
     }
 
-    // Sinon, afficher normalement
-    return widget.isRevealed ? _buildRevealedCard() : _buildHiddenCard();
+    // Si la tuile est révélée (après le chargement initial)
+    if (widget.isRevealed) {
+      return _buildRevealedTile();
+    }
+
+    // Par défaut, afficher la tuile cachée
+    return _buildHiddenTile();
   }
 
-  Widget _buildHiddenCard() {
+  Widget _buildHiddenTile() {
     return Container(
-      margin: const EdgeInsets.all(1),
+      margin: const EdgeInsets.all(0.5),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: widget.existsInDatabase
-              ? [
-                  Colors.grey.shade700,
-                  Colors.grey.shade600,
-                  Colors.grey.shade700
-                ]
-              : [Colors.grey.shade900, Colors.black87, Colors.grey.shade900],
-        ),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(
-          color: widget.existsInDatabase
-              ? Colors.grey.shade500
-              : Colors.grey.shade800,
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 2,
-            offset: const Offset(0, 1),
-          ),
-        ],
-      ),
-      child: Center(
-        child: Icon(
-          widget.existsInDatabase ? Icons.help_outline : Icons.explore,
-          color: widget.existsInDatabase
-              ? Colors.grey.shade600
-              : Colors.grey.shade800,
-          size: 20,
-        ),
+        color: Colors.black87,
+        border: Border.all(color: Colors.grey.shade800, width: 1),
       ),
     );
   }
 
-  Widget _buildRevealedCard() {
-    if (widget.tile == null) return _buildHiddenCard();
+  Widget _buildRevealedTile() {
+    if (widget.tile == null) {
+      return Container(
+        margin: const EdgeInsets.all(0.5),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade800,
+          border: Border.all(color: Colors.grey.shade700, width: 1),
+        ),
+        child: const Center(
+          child: Icon(
+            Icons.generating_tokens,
+            color: Colors.grey,
+            size: 16,
+          ),
+        ),
+      );
+    }
 
     return Container(
-      margin: const EdgeInsets.all(1),
+      margin: const EdgeInsets.all(0.5),
       decoration: BoxDecoration(
         color: _getTileColor(),
-        borderRadius: BorderRadius.circular(4),
         border: Border.all(
-          color: _getBorderColor(),
-          width: widget.isPlayerPosition ? 2.5 : 1,
+          color: widget.isPlayerPosition ? Colors.yellow : _getBorderColor(),
+          width: widget.isPlayerPosition ? 2 : 1,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 2,
-            offset: const Offset(0, 1),
-          ),
-        ],
       ),
       child: Stack(
-        fit: StackFit.expand,
         children: [
-          if (widget.tile != null) _buildTexturePattern(),
-          if (widget.hasOtherPlayer) _buildOtherPlayerIndicator(),
+          if (widget.tile != null) _buildTextureOverlay(),
+          if (widget.isPlayerPosition) _buildPlayerIndicator(),
         ],
       ),
     );
   }
 
-  Widget _buildTexturePattern() {
-    // Simple patterns pour chaque type
+  Widget _buildTextureOverlay() {
     switch (widget.tile!.type) {
       case TileType.grass:
         return Container(
@@ -219,7 +201,7 @@ class _TileWidgetState extends State<TileWidget>
               center: Alignment.topLeft,
               radius: 1.5,
               colors: [
-                Colors.green.shade300.withOpacity(0.3),
+                Colors.green.shade300.withOpacity(0.2),
                 Colors.transparent,
               ],
             ),
@@ -255,30 +237,35 @@ class _TileWidgetState extends State<TileWidget>
     }
   }
 
-  Widget _buildOtherPlayerIndicator() {
+  Widget _buildPlayerIndicator() {
     return Center(
       child: Container(
-        width: 26,
-        height: 26,
+        width: 24,
+        height: 24,
         decoration: BoxDecoration(
-          color: Colors.red.shade400,
+          color: Colors.white,
           shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 1.5),
+          border: Border.all(color: Colors.green.shade700, width: 2),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.4),
-              blurRadius: 3,
-              offset: const Offset(0, 1),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
             ),
           ],
         ),
-        child: const Icon(Icons.person, color: Colors.white, size: 16),
+        child: Icon(
+          Icons.person,
+          color: Colors.green.shade700,
+          size: 16,
+        ),
       ),
     );
   }
 
   Color _getTileColor() {
     if (widget.tile == null) return Colors.grey.shade800;
+
     switch (widget.tile!.type) {
       case TileType.grass:
         return Colors.green.shade400;
@@ -290,15 +277,15 @@ class _TileWidgetState extends State<TileWidget>
   }
 
   Color _getBorderColor() {
-    if (widget.isPlayerPosition) return Colors.yellow;
-    if (widget.tile == null) return Colors.black26;
+    if (widget.tile == null) return Colors.grey.shade700;
+
     switch (widget.tile!.type) {
       case TileType.grass:
-        return Colors.green.shade600.withOpacity(0.3);
+        return Colors.green.shade600.withOpacity(0.5);
       case TileType.water:
-        return Colors.blue.shade600.withOpacity(0.3);
+        return Colors.blue.shade600.withOpacity(0.5);
       case TileType.mountain:
-        return Colors.brown.shade600.withOpacity(0.3);
+        return Colors.brown.shade600.withOpacity(0.5);
     }
   }
 }
