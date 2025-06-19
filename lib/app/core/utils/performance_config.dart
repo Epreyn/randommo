@@ -20,6 +20,8 @@ class PerformanceConfig {
   // Configuration des animations
   static const Duration movementAnimationDuration = Duration(milliseconds: 200);
   static const Duration snackbarDuration = Duration(milliseconds: 800);
+  static const Duration tileRevealDuration = Duration(milliseconds: 600);
+  static const int tileRevealDelayFactor = 50; // ms par unité de distance
 
   // Optimisations Firestore
   static const bool enableOfflinePersistence = true;

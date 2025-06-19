@@ -6,9 +6,30 @@ import '../controllers/game_controller.dart';
 import '../controllers/player_controller.dart';
 import '../controllers/world_controller.dart';
 import 'tile_widget.dart';
+import 'player_indicator_widget.dart';
 
-class GameGrid extends StatelessWidget {
+class GameGrid extends StatefulWidget {
   const GameGrid({super.key});
+
+  @override
+  State<GameGrid> createState() => _GameGridState();
+}
+
+class _GameGridState extends State<GameGrid> {
+  Position? _previousPlayerPosition;
+  bool _isMoving = false;
+  final Set<String> _newlyRevealedTiles = {};
+  final Set<String> _previouslyRevealedTiles = {};
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialiser avec les tuiles déjà révélées
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final worldController = Get.find<WorldController>();
+      _previouslyRevealedTiles.addAll(worldController.revealedTileIds);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,6 +54,35 @@ class GameGrid extends StatelessWidget {
           ),
         );
       }
+
+      // Détecter le changement de position
+      if (_previousPlayerPosition != null &&
+          _previousPlayerPosition != player.position &&
+          !_isMoving) {
+        _isMoving = true;
+
+        // Sauvegarder les tuiles actuellement révélées
+        _previouslyRevealedTiles.clear();
+        _previouslyRevealedTiles.addAll(worldController.revealedTileIds);
+
+        // Délai pour laisser l'animation du joueur se terminer avant de révéler les tuiles
+        Future.delayed(const Duration(milliseconds: 250), () {
+          if (mounted) {
+            setState(() {
+              _isMoving = false;
+
+              // Identifier les nouvelles tuiles révélées
+              _newlyRevealedTiles.clear();
+              for (final tileId in worldController.revealedTileIds) {
+                if (!_previouslyRevealedTiles.contains(tileId)) {
+                  _newlyRevealedTiles.add(tileId);
+                }
+              }
+            });
+          }
+        });
+      }
+      _previousPlayerPosition = player.position;
 
       final viewRadius = worldController.viewRadius.value;
       final gridSize = viewRadius * 2 + 1;
@@ -63,7 +113,7 @@ class GameGrid extends StatelessWidget {
                 children: [
                   // Grille principale
                   _buildMainGrid(gridSize, viewRadius, player, worldController,
-                      playerController),
+                      playerController, _isMoving),
 
                   // Overlay de chargement si initialisation
                   if (!gameController.isInitialized.value)
@@ -90,7 +140,7 @@ class GameGrid extends StatelessWidget {
                       ),
                     ),
 
-                  // Indicateur de mouvement
+                  // Indicateur de mouvement (sans texte)
                   if (gameController.isMoving.value)
                     Positioned(
                       top: 8,
@@ -99,29 +149,16 @@ class GameGrid extends StatelessWidget {
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
                           color: Colors.black54,
-                          borderRadius: BorderRadius.circular(4),
+                          borderRadius: BorderRadius.circular(20),
                         ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(
-                              width: 12,
-                              height: 12,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor:
-                                    AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            ),
-                            SizedBox(width: 8),
-                            Text(
-                              'Déplacement...',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
+                        child: const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
                         ),
                       ),
                     ),
@@ -140,88 +177,92 @@ class GameGrid extends StatelessWidget {
     player,
     WorldController worldController,
     PlayerController playerController,
+    bool isMoving,
   ) {
-    return GridView.builder(
-      physics: const NeverScrollableScrollPhysics(),
-      padding: EdgeInsets.zero,
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: gridSize,
-        childAspectRatio: 1,
-        crossAxisSpacing: 0,
-        mainAxisSpacing: 0,
-      ),
-      itemCount: gridSize * gridSize,
-      itemBuilder: (context, index) {
-        final row = index ~/ gridSize;
-        final col = index % gridSize;
+    return Stack(
+      children: [
+        // Grille des tuiles
+        GridView.builder(
+          physics: const NeverScrollableScrollPhysics(),
+          padding: EdgeInsets.zero,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: gridSize,
+            childAspectRatio: 1,
+            crossAxisSpacing: 0,
+            mainAxisSpacing: 0,
+          ),
+          itemCount: gridSize * gridSize,
+          itemBuilder: (context, index) {
+            final row = index ~/ gridSize;
+            final col = index % gridSize;
 
-        final position = Position(
-          x: player.position.x + col - viewRadius,
-          y: player.position.y + row - viewRadius,
-        );
+            final position = Position(
+              x: player.position.x + col - viewRadius,
+              y: player.position.y + row - viewRadius,
+            );
 
-        // Chaque tuile dans un Obx pour la réactivité
-        return Obx(() {
-          // Récupérer les données réactives
-          final tile = worldController.getTileAt(position);
-          final isRevealed = worldController.isTileRevealed(position);
-          final isPlayerPosition = position == player.position;
+            // Chaque tuile dans un Obx pour la réactivité
+            return Obx(() {
+              // Récupérer les données réactives
+              final tile = worldController.getTileAt(position);
+              final isRevealed = worldController.isTileRevealed(position);
+              final isPlayerPosition = position == player.position;
+              final existsInDatabase =
+                  worldController.isTileExistsInDatabase(position);
 
-          // Vérifier les autres joueurs
-          final hasOtherPlayer =
-              playerController.nearbyPlayers.any((p) => p.position == position);
+              // Vérifier les autres joueurs
+              final hasOtherPlayer = playerController.nearbyPlayers
+                  .any((p) => p.position == position);
 
-          // Debug pour les tuiles au nord du joueur
-          if (position.x == player.position.x &&
-              position.y == player.position.y - 1) {
-            debugPrint('Tuile nord: tile=${tile?.type}, revealed=$isRevealed');
-          }
+              // Ne pas cacher les tuiles déjà révélées lors du mouvement
+              final shouldReveal = isRevealed &&
+                  (!isMoving || !_newlyRevealedTiles.contains(position.id));
 
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-            child: TileWidget(
-              key: ValueKey('tile_${position.id}_${tile?.type}'),
-              tile: tile,
-              position: position,
-              isRevealed: isRevealed,
-              isPlayerPosition: isPlayerPosition,
-              hasOtherPlayer: hasOtherPlayer,
-            ),
-          );
-        });
-      },
-    );
-  }
-}
-
-// Widget d'information sur la tuile (optionnel)
-class TileInfoOverlay extends StatelessWidget {
-  final Position position;
-  final String? tileType;
-
-  const TileInfoOverlay({
-    super.key,
-    required this.position,
-    this.tileType,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: Colors.black87,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        '${position.x},${position.y}${tileType != null ? '\n$tileType' : ''}',
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 8,
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+                child: TileWidget(
+                  key: ValueKey('tile_${position.id}'),
+                  tile: tile,
+                  position: position,
+                  isRevealed: shouldReveal,
+                  isPlayerPosition: false, // On gère le joueur séparément
+                  hasOtherPlayer: hasOtherPlayer,
+                  existsInDatabase: existsInDatabase,
+                ),
+              );
+            });
+          },
         ),
-        textAlign: TextAlign.center,
-      ),
+
+        // Joueur animé par-dessus la grille
+        LayoutBuilder(
+          builder: (context, constraints) {
+            // Calculer la taille exacte d'une tuile
+            final gridWidth = constraints.maxWidth;
+            final gridHeight = constraints.maxHeight;
+            final tileWidth = gridWidth / gridSize;
+            final tileHeight = gridHeight / gridSize;
+
+            // Position centrale (le joueur est toujours au centre)
+            final centerX = viewRadius * tileWidth;
+            final centerY = viewRadius * tileHeight;
+
+            return Positioned(
+              left: centerX,
+              top: centerY,
+              width: tileWidth,
+              height: tileHeight,
+              child: Center(
+                child: PlayerIndicatorWidget(
+                  isMoving: _isMoving,
+                  size: 32,
+                ),
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }

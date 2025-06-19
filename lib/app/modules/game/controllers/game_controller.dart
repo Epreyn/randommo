@@ -28,38 +28,51 @@ class GameController extends GetxController {
   Future<void> _initializeGame() async {
     print('Initialisation du jeu...');
 
-    // Attendre un peu pour que tout soit prêt
-    await Future.delayed(const Duration(milliseconds: 300));
-
-    // Attendre que le joueur soit disponible
-    int attempts = 0;
-    while (playerController.currentPlayer.value == null && attempts < 50) {
-      await Future.delayed(const Duration(milliseconds: 100));
-      attempts++;
-    }
+    // Ne pas attendre trop longtemps
+    await Future.delayed(const Duration(milliseconds: 100));
 
     final player = playerController.currentPlayer.value;
+
+    // Si pas de joueur, attendre un peu mais pas trop
     if (player == null) {
-      print('Erreur: Joueur non disponible après ${attempts * 100}ms');
+      int attempts = 0;
+      while (playerController.currentPlayer.value == null && attempts < 20) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        attempts++;
+      }
+    }
+
+    final finalPlayer = playerController.currentPlayer.value;
+    if (finalPlayer == null) {
+      print('Erreur: Joueur non disponible');
+      // Marquer comme initialisé quand même pour éviter le blocage
+      isInitialized.value = true;
       return;
     }
 
     try {
-      print('Joueur trouvé: ${player.id}');
+      print('Joueur trouvé: ${finalPlayer.id}');
 
       // Précharger la zone autour du spawn
-      worldController.preloadArea(player.position, 10);
+      worldController.preloadArea(finalPlayer.position, 10);
 
-      // Révéler les tuiles initiales
-      await _gameService.revealTilesAround(player.position, player.id);
+      // Révéler les tuiles initiales seulement si c'est un nouveau joueur
+      if (playerController.isFirstTime.value ||
+          finalPlayer.revealedTiles.isEmpty) {
+        await _gameService.revealTilesAround(
+            finalPlayer.position, finalPlayer.id);
+      }
 
-      // Forcer le rafraîchissement immédiat
+      // Forcer le rafraîchissement
       worldController.refreshAllTiles();
 
+      // Toujours marquer comme initialisé
       isInitialized.value = true;
       print('Initialisation terminée avec succès');
     } catch (e) {
       print('Erreur lors de l\'initialisation: $e');
+      // Marquer comme initialisé même en cas d'erreur
+      isInitialized.value = true;
     }
   }
 
@@ -113,8 +126,14 @@ class GameController extends GetxController {
           isDismissible: true,
         );
       } else {
-        // Rafraîchir immédiatement après succès
+        // Attendre un peu pour laisser Firestore se synchroniser
+        await Future.delayed(const Duration(milliseconds: 200));
+
+        // Forcer le rafraîchissement des tuiles pour s'assurer que les nouvelles sont chargées
         worldController.refreshAllTiles();
+
+        // Attendre encore un peu pour que le WorldController mette à jour ses listes
+        await Future.delayed(const Duration(milliseconds: 100));
       }
     } catch (e) {
       print('Erreur lors du déplacement: $e');
@@ -146,15 +165,11 @@ class GameController extends GetxController {
     }
   }
 
-  // Méthodes de déplacement
+  // Méthodes de déplacement (4 directions seulement)
   Future<void> moveUp() async => moveInDirection(0, -1);
   Future<void> moveDown() async => moveInDirection(0, 1);
   Future<void> moveLeft() async => moveInDirection(-1, 0);
   Future<void> moveRight() async => moveInDirection(1, 0);
-  Future<void> moveUpLeft() async => moveInDirection(-1, -1);
-  Future<void> moveUpRight() async => moveInDirection(1, -1);
-  Future<void> moveDownLeft() async => moveInDirection(-1, 1);
-  Future<void> moveDownRight() async => moveInDirection(1, 1);
 
   // Forcer le rechargement complet
   void forceRefresh() {

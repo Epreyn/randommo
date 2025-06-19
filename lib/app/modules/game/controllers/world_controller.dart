@@ -15,10 +15,13 @@ class WorldController extends GetxController {
   final RxMap<String, Tile> visibleTiles = <String, Tile>{}.obs;
   final RxInt viewRadius = 5.obs;
   final RxSet<String> revealedTileIds = <String>{}.obs;
+  final RxSet<String> existingTileIds =
+      <String>{}.obs; // Tuiles qui existent en BDD
 
   // Cache local pour performance
   final Map<String, Tile> _tileCache = {};
   final Map<String, bool> _loadingTiles = {};
+  final Map<String, bool> _existsInDatabase = {};
 
   @override
   void onInit() {
@@ -51,24 +54,25 @@ class WorldController extends GetxController {
     final newVisibleTiles = <String, Tile>{};
     final tilesToLoad = <Position>[];
 
-    // Calculer toutes les positions visibles
-    for (int dx = -viewRadius.value; dx <= viewRadius.value; dx++) {
-      for (int dy = -viewRadius.value; dy <= viewRadius.value; dy++) {
+    // Charger une zone légèrement plus grande pour le déplacement de la grille
+    final extendedRadius = viewRadius.value + 1;
+
+    // Calculer toutes les positions visibles (avec marge)
+    for (int dx = -extendedRadius; dx <= extendedRadius; dx++) {
+      for (int dy = -extendedRadius; dy <= extendedRadius; dy++) {
         final pos = Position(x: center.x + dx, y: center.y + dy);
 
-        // Si dans le cache, utiliser directement
-        if (_tileCache.containsKey(pos.id)) {
-          newVisibleTiles[pos.id] = _tileCache[pos.id]!;
-        } else {
-          // Générer immédiatement une tuile temporaire pour l'affichage
-          final tempTile = WorldGeneratorService.generateTile(
-              pos, _playerController.currentPlayer.value?.id ?? 'system');
-          newVisibleTiles[pos.id] = tempTile;
-          _tileCache[pos.id] = tempTile;
-
-          // Marquer pour chargement depuis Firestore
-          if (!_loadingTiles.containsKey(pos.id)) {
-            tilesToLoad.add(pos);
+        // Si la tuile est révélée, on peut la charger
+        if (isTileRevealed(pos)) {
+          // Si dans le cache, utiliser directement
+          if (_tileCache.containsKey(pos.id)) {
+            newVisibleTiles[pos.id] = _tileCache[pos.id]!;
+          } else {
+            // NE PAS générer de tuile temporaire ici
+            // Marquer pour chargement depuis Firestore
+            if (!_loadingTiles.containsKey(pos.id)) {
+              tilesToLoad.add(pos);
+            }
           }
         }
       }
@@ -80,6 +84,50 @@ class WorldController extends GetxController {
     // Charger depuis Firestore en arrière-plan
     if (tilesToLoad.isNotEmpty) {
       _loadTilesFromFirestore(tilesToLoad);
+    }
+
+    // Vérifier aussi l'existence des tuiles non révélées dans la zone visible étendue
+    _checkTilesExistence(center);
+  }
+
+  // Vérifier l'existence des tuiles non révélées pour l'affichage gris/noir
+  Future<void> _checkTilesExistence(Position center) async {
+    final positions = <Position>[];
+    final extendedRadius =
+        viewRadius.value + 1; // Zone étendue pour le déplacement
+
+    for (int dx = -extendedRadius; dx <= extendedRadius; dx++) {
+      for (int dy = -extendedRadius; dy <= extendedRadius; dy++) {
+        final pos = Position(x: center.x + dx, y: center.y + dy);
+
+        // Si pas déjà vérifié et pas révélé
+        if (!_existsInDatabase.containsKey(pos.id) && !isTileRevealed(pos)) {
+          positions.add(pos);
+        }
+      }
+    }
+
+    // Vérifier en batch
+    if (positions.isNotEmpty) {
+      try {
+        final tileIds = positions.map((p) => p.id).toList();
+        final existingTiles = await _worldRepo.getTiles(tileIds);
+
+        // Marquer celles qui existent
+        for (final tile in existingTiles) {
+          _existsInDatabase[tile.id] = true;
+          existingTileIds.add(tile.id);
+        }
+
+        // Marquer celles qui n'existent pas
+        for (final pos in positions) {
+          if (!existingTileIds.contains(pos.id)) {
+            _existsInDatabase[pos.id] = false;
+          }
+        }
+      } catch (e) {
+        print('Erreur vérification existence: $e');
+      }
     }
   }
 
@@ -94,6 +142,13 @@ class WorldController extends GetxController {
         final firestoreTile = await _worldRepo.getTileAt(pos);
 
         if (firestoreTile != null) {
+          // Marquer comme existant en BDD
+          _existsInDatabase[pos.id] = true;
+          existingTileIds.add(pos.id);
+
+          // Enregistrer dans le générateur pour éviter la régénération
+          WorldGeneratorService.registerExistingTile(pos, firestoreTile.type);
+
           // Remplacer la tuile temporaire par la vraie
           _tileCache[pos.id] = firestoreTile;
 
@@ -101,6 +156,9 @@ class WorldController extends GetxController {
           if (visibleTiles.containsKey(pos.id)) {
             visibleTiles[pos.id] = firestoreTile;
           }
+        } else {
+          // La tuile n'existe pas en BDD
+          _existsInDatabase[pos.id] = false;
         }
       } catch (e) {
         print('Erreur chargement tuile ${pos.id}: $e');
@@ -135,6 +193,10 @@ class WorldController extends GetxController {
 
   bool isTileRevealed(Position position) {
     return revealedTileIds.contains(position.id);
+  }
+
+  bool isTileExistsInDatabase(Position position) {
+    return _existsInDatabase[position.id] ?? false;
   }
 
   bool isTileVisible(Position position) {

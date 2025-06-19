@@ -1,8 +1,9 @@
+// lib/app/modules/game/views/game_view.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../controllers/game_controller.dart';
 import '../controllers/player_controller.dart';
-import '../widgets/game_grid.dart';
+import '../widgets/animated_game_grid.dart';
 import '../widgets/directional_pad.dart';
 
 class GameView extends GetView<GameController> {
@@ -41,6 +42,13 @@ class GameView extends GetView<GameController> {
             }
             return const SizedBox.shrink();
           }),
+
+          // Bouton info sur mobile
+          if (MediaQuery.of(context).size.width < 600)
+            IconButton(
+              icon: const Icon(Icons.info_outline),
+              onPressed: () => _showLegendDialog(context),
+            ),
         ],
       ),
       body: SafeArea(
@@ -56,7 +64,7 @@ class GameView extends GetView<GameController> {
                         if (Get.find<PlayerController>().isLoading.value) {
                           return const CircularProgressIndicator();
                         }
-                        return const GameGrid();
+                        return const AnimatedGameGrid();
                       }),
                     ),
                   ),
@@ -79,7 +87,7 @@ class GameView extends GetView<GameController> {
                         if (Get.find<PlayerController>().isLoading.value) {
                           return const CircularProgressIndicator();
                         }
-                        return const GameGrid();
+                        return const AnimatedGameGrid();
                       }),
                     ),
                   ),
@@ -136,7 +144,11 @@ class GameView extends GetView<GameController> {
           _legendItem(Colors.green[400]!, 'Herbe (praticable)'),
           _legendItem(Colors.blue[400]!, 'Eau (impraticable)'),
           _legendItem(Colors.brown[400]!, 'Montagne (impraticable)'),
-          _legendItem(Colors.grey[800]!, 'Non exploré'),
+          const SizedBox(height: 5),
+          const Divider(color: Colors.white24),
+          const SizedBox(height: 5),
+          _legendItem(Colors.grey[700]!, 'Zone déjà explorée'),
+          _legendItem(Colors.grey[900]!, 'Terre inconnue'),
         ],
       ),
     );
@@ -160,6 +172,26 @@ class GameView extends GetView<GameController> {
           Text(
             label,
             style: const TextStyle(color: Colors.white70, fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showLegendDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[850],
+        title: const Text(
+          'Légende',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: _buildLegend(),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
           ),
         ],
       ),

@@ -41,6 +41,8 @@ class GameService extends GetxService {
       final existingTiles = await worldRepo.getTiles(positions);
       for (final tile in existingTiles) {
         _tileCache[tile.id] = tile;
+        // Enregistrer dans le générateur pour cohérence
+        WorldGeneratorService.registerExistingTile(tile.position, tile.type);
       }
     } catch (e) {
       print('Erreur préchargement spawn: $e');
@@ -48,6 +50,7 @@ class GameService extends GetxService {
   }
 
   // Révèle les tuiles autour d'une position avec optimisation
+  // Note: La tuile n'est visible dans l'UI que si elle est dans revealedTiles du joueur
   Future<List<Tile>> revealTilesAround(
       Position position, String playerId) async {
     final positions = WorldGeneratorService.getSurroundingPositions(position);
@@ -60,11 +63,11 @@ class GameService extends GetxService {
       Tile? tile = _tileCache[pos.id];
 
       if (tile == null) {
-        // Vérifier dans Firestore
+        // Vérifier dans Firestore EN PREMIER
         tile = await worldRepo.getTileAt(pos);
 
         if (tile == null) {
-          // Générer nouvelle tuile
+          // Seulement si elle n'existe pas, on génère
           tile = WorldGeneratorService.generateTile(pos, playerId);
           newTiles.add(tile);
         }

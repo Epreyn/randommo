@@ -18,6 +18,12 @@ class WorldGeneratorService {
   static const double _baseMountainChance =
       0.10; // 10% de base pour les montagnes
 
+  // Enregistre une tuile existante dans le cache (utile pour les tuiles chargées depuis BDD)
+  static void registerExistingTile(Position position, TileType type) {
+    final tileId = '${position.x}_${position.y}';
+    _generatedTiles[tileId] = type;
+  }
+
   // Génère une tuile avec cohérence spatiale
   static Tile generateTile(Position position, String createdBy) {
     final tileId = '${position.x}_${position.y}';
@@ -56,7 +62,7 @@ class WorldGeneratorService {
     );
   }
 
-  // Récupère les types des tuiles voisines
+  // Récupère les types des tuiles voisines (4 directions seulement)
   static Map<TileType, int> _getNeighborTypes(Position center) {
     final counts = {
       TileType.grass: 0,
@@ -64,16 +70,19 @@ class WorldGeneratorService {
       TileType.mountain: 0,
     };
 
-    // Vérifier les 8 voisins
-    for (int dx = -1; dx <= 1; dx++) {
-      for (int dy = -1; dy <= 1; dy++) {
-        if (dx == 0 && dy == 0) continue;
+    // Vérifier les 4 voisins directs
+    const directions = [
+      [0, -1], // Nord
+      [1, 0], // Est
+      [0, 1], // Sud
+      [-1, 0], // Ouest
+    ];
 
-        final neighborId = '${center.x + dx}_${center.y + dy}';
-        if (_generatedTiles.containsKey(neighborId)) {
-          counts[_generatedTiles[neighborId]!] =
-              counts[_generatedTiles[neighborId]!]! + 1;
-        }
+    for (final dir in directions) {
+      final neighborId = '${center.x + dir[0]}_${center.y + dir[1]}';
+      if (_generatedTiles.containsKey(neighborId)) {
+        counts[_generatedTiles[neighborId]!] =
+            counts[_generatedTiles[neighborId]!]! + 1;
       }
     }
 
@@ -97,11 +106,11 @@ class WorldGeneratorService {
 
     // Augmenter les chances selon les voisins du même type
     if (neighbors[TileType.water]! > 0) {
-      waterChance += _waterClusterChance * (neighbors[TileType.water]! / 8.0);
+      waterChance += _waterClusterChance * (neighbors[TileType.water]! / 4.0);
     }
     if (neighbors[TileType.mountain]! > 0) {
       mountainChance +=
-          _mountainClusterChance * (neighbors[TileType.mountain]! / 8.0);
+          _mountainClusterChance * (neighbors[TileType.mountain]! / 4.0);
     }
 
     // Normaliser si nécessaire
@@ -139,13 +148,13 @@ class WorldGeneratorService {
     // Si c'est de l'herbe, pas de blocage
     if (type == TileType.grass) return false;
 
-    // Vérifier dans un rayon de 2 cases s'il reste au moins un chemin d'herbe
+    // Vérifier dans un rayon de 2 cases (distance Manhattan) s'il reste au moins un chemin d'herbe
     int grassCount = 0;
     int totalChecked = 0;
 
     for (int dx = -2; dx <= 2; dx++) {
       for (int dy = -2; dy <= 2; dy++) {
-        if (dx.abs() + dy.abs() > 3) continue; // Distance Manhattan max 3
+        if (dx.abs() + dy.abs() > 2) continue; // Distance Manhattan max 2
 
         final checkPos = Position(x: position.x + dx, y: position.y + dy);
         final tileId = checkPos.id;
@@ -162,9 +171,9 @@ class WorldGeneratorService {
     // S'il y a peu de tuiles générées, on ne bloque pas
     if (totalChecked < 5) return false;
 
-    // S'assurer qu'il reste au moins 30% d'herbe dans la zone
+    // S'assurer qu'il reste au moins 40% d'herbe dans la zone (plus permissif car moins de directions)
     final grassRatio = grassCount / totalChecked;
-    return grassRatio < 0.3;
+    return grassRatio < 0.4;
   }
 
   // Trouve un chemin praticable depuis une position
@@ -178,24 +187,27 @@ class WorldGeneratorService {
 
     checkedTiles.add(from.id);
 
-    // Vérifier les 8 directions
-    for (int dx = -1; dx <= 1; dx++) {
-      for (int dy = -1; dy <= 1; dy++) {
-        if (dx == 0 && dy == 0) continue;
+    // Vérifier les 4 directions
+    const directions = [
+      [0, -1], // Nord
+      [1, 0], // Est
+      [0, 1], // Sud
+      [-1, 0], // Ouest
+    ];
 
-        final nextPos = Position(x: from.x + dx, y: from.y + dy);
-        final nextId = nextPos.id;
+    for (final dir in directions) {
+      final nextPos = Position(x: from.x + dir[0], y: from.y + dir[1]);
+      final nextId = nextPos.id;
 
-        // Si déjà vérifié, passer
-        if (checkedTiles.contains(nextId)) continue;
+      // Si déjà vérifié, passer
+      if (checkedTiles.contains(nextId)) continue;
 
-        // Si c'est de l'herbe ou pas encore généré, c'est praticable
-        if (!_generatedTiles.containsKey(nextId) ||
-            _generatedTiles[nextId] == TileType.grass) {
-          // Récursion pour continuer le chemin
-          if (hasWalkablePath(nextPos, to, checkedTiles)) {
-            return true;
-          }
+      // Si c'est de l'herbe ou pas encore généré, c'est praticable
+      if (!_generatedTiles.containsKey(nextId) ||
+          _generatedTiles[nextId] == TileType.grass) {
+        // Récursion pour continuer le chemin
+        if (hasWalkablePath(nextPos, to, checkedTiles)) {
+          return true;
         }
       }
     }
@@ -203,20 +215,15 @@ class WorldGeneratorService {
     return false;
   }
 
-  // Génère les positions des 9 cases autour d'une position
+  // Génère les positions de la case actuelle et des 4 cases adjacentes
   static List<Position> getSurroundingPositions(Position center) {
-    final positions = <Position>[];
-
-    for (int dx = -1; dx <= 1; dx++) {
-      for (int dy = -1; dy <= 1; dy++) {
-        positions.add(Position(
-          x: center.x + dx,
-          y: center.y + dy,
-        ));
-      }
-    }
-
-    return positions;
+    return [
+      center, // Position centrale
+      Position(x: center.x, y: center.y - 1), // Nord
+      Position(x: center.x + 1, y: center.y), // Est
+      Position(x: center.x, y: center.y + 1), // Sud
+      Position(x: center.x - 1, y: center.y), // Ouest
+    ];
   }
 
   // Calcule la distance entre deux positions
@@ -224,12 +231,13 @@ class WorldGeneratorService {
     return sqrt(pow(a.x - b.x, 2) + pow(a.y - b.y, 2));
   }
 
-  // Vérifie si un déplacement est valide
+  // Vérifie si un déplacement est valide (4 directions seulement)
   static bool isValidMove(Position from, Position to) {
-    final dx = (from.x - to.x).abs();
-    final dy = (from.y - to.y).abs();
+    final dx = to.x - from.x;
+    final dy = to.y - from.y;
 
-    return dx <= 1 && dy <= 1 && (dx != 0 || dy != 0);
+    // Vérifier que c'est un mouvement d'une case dans une des 4 directions
+    return (dx == 0 && dy.abs() == 1) || (dy == 0 && dx.abs() == 1);
   }
 
   // Nettoie le cache (utile pour les tests)
