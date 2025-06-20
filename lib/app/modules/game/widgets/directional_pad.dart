@@ -41,26 +41,48 @@ class DirectionalPad extends StatelessWidget {
               width: 80,
               height: 80,
               child: Center(
-                child: Obx(() => controller.isMoving.value
-                    ? const SizedBox(
-                        width: 30,
-                        height: 30,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 3,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.green),
+                child: Obx(() {
+                  if (controller.isRevealingTiles.value) {
+                    return Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.orange),
+                          ),
                         ),
-                      )
-                    : Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: Colors.grey[800],
-                          shape: BoxShape.circle,
-                          border:
-                              Border.all(color: Colors.grey[600]!, width: 2),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Révélation...',
+                          style: TextStyle(fontSize: 8, color: Colors.orange),
                         ),
-                      )),
+                      ],
+                    );
+                  } else if (controller.isMoving.value) {
+                    return const SizedBox(
+                      width: 30,
+                      height: 30,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+                      ),
+                    );
+                  } else {
+                    return Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[800],
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.grey[600]!, width: 2),
+                      ),
+                    );
+                  }
+                }),
               ),
             ),
           ),
@@ -105,7 +127,11 @@ class _DirectionalButton extends StatelessWidget {
           width: 80,
           height: 80,
           child: ElevatedButton(
-            onPressed: controller.isMoving.value ? null : onPressed,
+            // Désactiver si en mouvement OU si des tuiles sont en révélation
+            onPressed:
+                (controller.isMoving.value || controller.isRevealingTiles.value)
+                    ? null
+                    : onPressed,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.grey[700],
               foregroundColor: Colors.white,
@@ -114,7 +140,9 @@ class _DirectionalButton extends StatelessWidget {
               ),
               padding: EdgeInsets.zero,
               elevation: 4,
-              disabledBackgroundColor: Colors.grey[800],
+              disabledBackgroundColor: controller.isRevealingTiles.value
+                  ? Colors.orange[800] // Orange pendant la révélation
+                  : Colors.grey[800], // Gris pendant le mouvement
             ),
             child: Icon(icon, size: 32),
           ),

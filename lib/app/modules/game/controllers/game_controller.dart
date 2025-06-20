@@ -22,6 +22,7 @@ class GameController extends GetxController {
   // Animation state
   final RxList<String> tilesBeingRevealed = <String>[].obs;
   final RxBool isInitialLoad = true.obs;
+  final RxBool isRevealingTiles = false.obs;
 
   @override
   void onInit() {
@@ -207,7 +208,14 @@ class GameController extends GetxController {
   }
 
   Future<void> movePlayer(int dx, int dy) async {
-    if (isMoving.value || currentPlayer.value == null) return;
+    if (isMoving.value ||
+        currentPlayer.value == null ||
+        isRevealingTiles.value) {
+      if (isRevealingTiles.value) {
+        print('⏳ Attente de la fin de l\'animation des tuiles...');
+      }
+      return;
+    }
 
     final from = currentPlayer.value!.position;
     final to = Position(x: from.x + dx, y: from.y + dy);
@@ -293,12 +301,22 @@ class GameController extends GetxController {
     final newTileIds = <String>[];
     final tilesToCreate = <Tile>[];
 
+    // Identifier SEULEMENT les tuiles vraiment nouvelles
     for (final pos in positions) {
       if (!revealedTileIds.contains(pos.id)) {
         newTileIds.add(pos.id);
+      }
+    }
 
-        // Vérifier si la tuile existe déjà
-        if (!tiles.containsKey(pos.id)) {
+    print('📝 Nouvelles tuiles à révéler: ${newTileIds.join(", ")}');
+
+    if (newTileIds.isNotEmpty) {
+      // Marquer qu'on est en train de révéler des tuiles
+      isRevealingTiles.value = true;
+
+      // D'abord charger/créer les tuiles
+      for (final pos in positions) {
+        if (newTileIds.contains(pos.id) && !tiles.containsKey(pos.id)) {
           final tileDoc = await FirebaseFirestore.instance
               .collection('world')
               .doc(pos.id)
@@ -307,30 +325,25 @@ class GameController extends GetxController {
           if (tileDoc.exists) {
             tiles[pos.id] = Tile.fromMap(tileDoc.data()!);
           } else {
-            // Générer une nouvelle tuile
             final tile = _generateSimpleTile(pos);
             tiles[pos.id] = tile;
             tilesToCreate.add(tile);
           }
         }
       }
-    }
 
-    print('📝 Nouvelles tuiles à révéler: ${newTileIds.join(", ")}');
-
-    // Créer les nouvelles tuiles en batch
-    if (tilesToCreate.isNotEmpty) {
-      final batch = FirebaseFirestore.instance.batch();
-      for (final tile in tilesToCreate) {
-        batch.set(FirebaseFirestore.instance.collection('world').doc(tile.id),
-            tile.toMap());
+      // Créer les nouvelles tuiles en batch
+      if (tilesToCreate.isNotEmpty) {
+        final batch = FirebaseFirestore.instance.batch();
+        for (final tile in tilesToCreate) {
+          batch.set(FirebaseFirestore.instance.collection('world').doc(tile.id),
+              tile.toMap());
+        }
+        await batch.commit();
+        print('💾 ${tilesToCreate.length} nouvelles tuiles créées');
       }
-      await batch.commit();
-      print('💾 ${tilesToCreate.length} nouvelles tuiles créées');
-    }
 
-    // Mettre à jour les tuiles révélées
-    if (newTileIds.isNotEmpty) {
+      // Mettre à jour les tuiles révélées
       revealedTileIds.addAll(newTileIds);
 
       await FirebaseFirestore.instance
@@ -342,19 +355,47 @@ class GameController extends GetxController {
 
       print('✅ Tuiles révélées mises à jour dans Firebase');
 
-      // Animer la révélation seulement si pas en chargement initial
+      // ENSUITE animer SEULEMENT les nouvelles tuiles
       if (!isInitialLoad.value) {
-        // Créer une nouvelle liste pour l'animation
-        final animList = List<String>.from(tilesBeingRevealed);
-        animList.addAll(newTileIds);
-        tilesBeingRevealed.value = animList;
+        await Future.delayed(const Duration(milliseconds: 50));
 
-        // Retirer après l'animation
-        Future.delayed(const Duration(milliseconds: 600), () {
-          final cleanList = List<String>.from(tilesBeingRevealed);
-          cleanList.removeWhere((id) => newTileIds.contains(id));
+        // Animer les nouvelles tuiles
+        tilesBeingRevealed.value = [...tilesBeingRevealed, ...newTileIds];
+        tilesBeingRevealed.refresh();
+        update();
+
+        // Retirer de l'animation après 700ms et libérer le mouvement
+        Timer(const Duration(milliseconds: 700), () {
+          final cleanList = tilesBeingRevealed
+              .where((id) => !newTileIds.contains(id))
+              .toList();
           tilesBeingRevealed.value = cleanList;
+          tilesBeingRevealed.refresh();
+          update();
+
+          // Libérer le mouvement quand toutes les animations sont terminées
+          if (tilesBeingRevealed.isEmpty) {
+            isRevealingTiles.value = false;
+            print('✅ Animations terminées, mouvement libre');
+          }
         });
+      } else {
+        // Si pas d'animation, libérer immédiatement
+        isRevealingTiles.value = false;
+      }
+    } else {
+      // Si pas de nouvelles tuiles, juste charger celles qui manquent
+      for (final pos in positions) {
+        if (!tiles.containsKey(pos.id) && revealedTileIds.contains(pos.id)) {
+          final tileDoc = await FirebaseFirestore.instance
+              .collection('world')
+              .doc(pos.id)
+              .get();
+
+          if (tileDoc.exists) {
+            tiles[pos.id] = Tile.fromMap(tileDoc.data()!);
+          }
+        }
       }
     }
   }
@@ -364,20 +405,6 @@ class GameController extends GetxController {
   void moveDown() => movePlayer(0, 1);
   void moveLeft() => movePlayer(-1, 0);
   void moveRight() => movePlayer(1, 0);
-
-  // Méthode de test pour débugger l'animation
-  void testRevealAnimation() {
-    print('🧪 TEST: Animation manuelle');
-    final testTiles = ['0_-1', '1_0', '0_1', '-1_0'];
-
-    // IMPORTANT : Remplacer directement la liste
-    tilesBeingRevealed.value = List<String>.from(testTiles);
-
-    Timer(const Duration(seconds: 2), () {
-      tilesBeingRevealed.value = [];
-      print('🧪 TEST: Animation terminée');
-    });
-  }
 
   // Génération simple de tuiles
   Tile _generateSimpleTile(Position position) {
@@ -400,23 +427,5 @@ class GameController extends GetxController {
       createdAt: DateTime.now(),
       createdBy: currentPlayer.value?.id,
     );
-  }
-
-  void testSingleTile() {
-    print('🧪 TEST: Animation d\'une seule tuile');
-
-    // Tester avec une seule tuile
-    tilesBeingRevealed.value = ['0_-1'];
-    tilesBeingRevealed.refresh();
-    update();
-
-    print('État de tilesBeingRevealed: ${tilesBeingRevealed.value}');
-
-    Timer(const Duration(seconds: 2), () {
-      tilesBeingRevealed.value = [];
-      tilesBeingRevealed.refresh();
-      update();
-      print('🧪 TEST terminé');
-    });
   }
 }
